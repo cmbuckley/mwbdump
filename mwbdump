@@ -1,0 +1,251 @@
+#!/bin/sh
+
+requireCommand(){
+    command -v $1 >/dev/null 2>&1 || { echo >&2 "mwbdump requires $1"; exit 1; }
+}
+
+requireCommand xsltproc
+requireCommand sqlite3
+requireCommand perl
+
+SCHEMA=$(tempfile)
+TABLES=$(tempfile)
+INSERTS=$(tempfile)
+
+cat << 'END_SCHEMA' > $SCHEMA
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  <xsl:output method="text" media-type="application/x-sql" encoding="UTF-8" />
+
+  <!-- keys -->
+  <xsl:key name="tables" match="//value[@struct-name='db.mysql.Table']/value[@key='name']" use="../@id" />
+  <xsl:key name="columns" match="//value[@struct-name='db.mysql.Column']/value[@key='name']" use="../@id" />
+
+  <!-- root -->
+  <xsl:template match="/">
+    <xsl:apply-templates select="//value[@struct-name='db.mysql.Schema']" />
+  </xsl:template>
+
+  <!-- schemata -->
+  <xsl:template match="value[@struct-name='db.mysql.Schema']">
+    <xsl:text>CREATE SCHEMA IF NOT EXISTS `</xsl:text>
+    <xsl:value-of select="value[@key='name']" />
+    <xsl:text>` DEFAULT CHARACTER SET </xsl:text>
+    <xsl:value-of select="value[@key='defaultCharacterSetName']" />
+    <xsl:text> COLLATE </xsl:text>
+    <xsl:value-of select="value[@key='defaultCollationName']" />
+    <xsl:text>;&#10;&#10;</xsl:text>
+    <xsl:apply-templates select="value/value[@struct-name='db.mysql.Table']" />
+  </xsl:template>
+
+  <!-- tables -->
+  <xsl:template match="value[@struct-name='db.mysql.Table']">
+    <xsl:text>CREATE TABLE IF NOT EXISTS `</xsl:text>
+    <xsl:value-of select="../../value[@key='name']" />
+    <xsl:text>`.`</xsl:text>
+    <xsl:value-of select="value[@key='name']" />
+    <xsl:text>` (&#10;</xsl:text>
+    <xsl:apply-templates select="value/value[@struct-name='db.mysql.Column']" />
+    <xsl:apply-templates select="value/value[@struct-name='db.mysql.Index'][value[@key='indexType'][.='PRIMARY']]" />
+    <xsl:apply-templates select="value/value[@struct-name='db.mysql.Index'][value[@key='indexType'][. != 'PRIMARY']]" />
+    <xsl:apply-templates select="value/value[@struct-name='db.mysql.ForeignKey']" />
+    <xsl:text>&#10;) ENGINE = </xsl:text>
+    <xsl:value-of select="value[@key='tableEngine']" />
+    <xsl:text>;&#10;&#10;</xsl:text>
+  </xsl:template>
+
+  <!-- columns -->
+  <xsl:template match="value[@struct-name='db.mysql.Column']">
+    <xsl:if test="position() != 1">,&#10;</xsl:if>
+    <xsl:value-of select="concat('  `', value[@key='name'], '` ')" />
+    <xsl:apply-templates select="link[@key='simpleType']" />
+    <xsl:apply-templates select="." mode="column-extras" />
+    <xsl:for-each select="value[@key='flags']/value">
+      <xsl:value-of select="concat(' ', .)" />
+    </xsl:for-each>
+    <xsl:apply-templates select="." mode="column-null" />
+    <xsl:apply-templates select="." mode="column-default" />
+    <xsl:if test="value[@key='autoIncrement'] = '1'"> AUTO_INCREMENT</xsl:if>
+  </xsl:template>
+
+  <!-- column type -->
+  <xsl:template match="link[@key='simpleType']">
+    <xsl:choose>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.int'">INT</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.varchar'">VARCHAR</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.char'">CHAR</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.decimal'">DECIMAL</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.datetime'">DATETIME</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.blob'">BLOB</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.longblob'">LONGBLOB</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.mediumblob'">MEDIUMBLOB</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.tinyblob'">TINYBLOB</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.date'">DATE</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.time'">TIME</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.timestamp'">TIMESTAMP</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.year'">YEAR</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.smallint'">SMALLINT</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.tinyint'">TINYINT</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.bigint'">BIGINT</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.mediumint'">MEDIUMINT</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.text'">TEXT</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.bit'">BIT</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.mediumtext'">MEDIUMTEXT</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.enum'">ENUM</xsl:when>
+      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.float'">FLOAT</xsl:when>
+      <!--<xsl:otherwise>UNKNOWN</xsl:otherwise>-->
+    </xsl:choose>
+  </xsl:template>
+
+  <!-- column extras -->
+  <xsl:template match="value[@struct-name='db.mysql.Column']" mode="column-extras">
+    <xsl:if test="value[@key='precision'] != '-1'">
+      <xsl:value-of select="concat('(', value[@key='precision'])" />
+      <xsl:if test="value[@key='scale'] != '-1'">
+        <xsl:value-of select="concat(',', value[@key='scale'])" />
+      </xsl:if>
+      <xsl:text>)</xsl:text>
+    </xsl:if>
+    <xsl:if test="value[@key='length'] != '-1'">
+      <xsl:value-of select="concat('(', value[@key='length'], ')')" />
+    </xsl:if>
+    <xsl:if test="value[@key='datatypeExplicitParams'] != ''">
+      <xsl:value-of select="value[@key='datatypeExplicitParams']" />
+    </xsl:if>
+  </xsl:template>
+
+  <!-- column nullable -->
+  <xsl:template match="value[@struct-name='db.mysql.Column']" mode="column-null">
+    <xsl:if test="value[@key='isNotNull'] = '1'"> NOT</xsl:if>
+    <xsl:text> NULL</xsl:text>
+  </xsl:template>
+
+  <!-- column default -->
+  <xsl:template match="value[@struct-name='db.mysql.Column']" mode="column-default">
+    <xsl:choose>
+      <xsl:when test="value[@key='defaultValue'] = ''">
+        <xsl:if test="value[@key='defaultValueIsNull'] = '1'"> DEFAULT NULL</xsl:if>
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:value-of select="concat(' DEFAULT ', value[@key='defaultValue'])" />
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:template>
+
+  <!-- primary key -->
+  <xsl:template match="value[@struct-name='db.mysql.Index'][value[@key='indexType'][.='PRIMARY']]">
+    <xsl:if test="position() = 1">,&#10;  PRIMARY KEY (</xsl:if>
+    <xsl:apply-templates select="value/value[@struct-name='db.mysql.IndexColumn']/link[@key='referencedColumn']" />
+    <xsl:text>)</xsl:text>
+  </xsl:template>
+
+  <!-- other indices -->
+  <xsl:template match="value[@struct-name='db.mysql.Index'][value[@key='indexType'][. != 'PRIMARY']]">
+    <xsl:text>,&#10;  </xsl:text>
+    <xsl:if test="value[@key='indexType'] != 'INDEX'">
+      <xsl:value-of select="concat(value[@key='indexType'], ' ')" />
+    </xsl:if>
+    <xsl:text>INDEX </xsl:text>
+    <xsl:value-of select="concat('`', value[@key='name'], '` (')" />
+    <xsl:apply-templates select="value/value[@struct-name='db.mysql.IndexColumn']" />
+    <xsl:text>)</xsl:text>
+  </xsl:template>
+
+  <!-- foreign keys -->
+  <xsl:template match="value[@struct-name='db.mysql.ForeignKey']">
+    <xsl:text>,&#10;  CONSTRAINT `</xsl:text>
+    <xsl:value-of select="value[@key='name']" />
+    <xsl:text>`&#10;    FOREIGN KEY (</xsl:text>
+    <xsl:apply-templates select="value[@key='referencedColumns']/link[@type='object']" />
+    <xsl:text>)&#10;    REFERENCES `</xsl:text>
+    <xsl:value-of select="../../../../value[@key='name']" />
+    <xsl:text>`.`</xsl:text>
+    <xsl:value-of select="key('tables', link[@key='referencedTable'])" />
+    <xsl:text>` (</xsl:text>
+    <xsl:apply-templates select="value[@key='columns']/link[@type='object']" />
+    <xsl:text>)</xsl:text>
+    <xsl:text>&#10;    ON DELETE </xsl:text>
+    <xsl:value-of select="value[@key='deleteRule']" />
+    <xsl:text>&#10;    ON UPDATE </xsl:text>
+    <xsl:value-of select="value[@key='updateRule']" />
+  </xsl:template>
+
+  <!-- primary / foreign key columns -->
+  <xsl:template match="value[@struct-name='db.mysql.IndexColumn']/link[@key='referencedColumn'] | value[@content-struct-name='db.Column']/link[@type='object']">
+    <xsl:if test="position() != 1">, </xsl:if>
+    <xsl:value-of select="concat('`', key('columns', .), '`')" />
+  </xsl:template>
+
+  <!-- index columns -->
+  <xsl:template match="value[@struct-name='db.mysql.IndexColumn']">
+    <xsl:if test="position() != 1">, </xsl:if>
+    <xsl:value-of select="concat('`', key('columns', link[@key='referencedColumn']), '` ')" />
+    <xsl:choose>
+      <xsl:when test="value[@key='descend'] = '0'">ASC</xsl:when>
+      <xsl:otherwise>DESC</xsl:otherwise>
+    </xsl:choose>
+  </xsl:template>
+</xsl:stylesheet>
+END_SCHEMA
+
+cat << 'END_TABLES' > $TABLES
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  <xsl:output method="text" media-type="application/x-sql" encoding="UTF-8" />
+
+  <!-- keys -->
+  <xsl:key name="tables" match="//value[@struct-name='db.mysql.Table']/value[@key='name']" use="../@id" />
+  <xsl:key name="columns" match="//value[@struct-name='db.mysql.Column']/value[@key='name']" use="../@id" />
+
+  <!-- root -->
+  <xsl:template match="/">
+    <xsl:apply-templates select="//value[@struct-name='db.mysql.Table']" />
+  </xsl:template>
+
+  <xsl:template match="value[@struct-name='db.mysql.Table']">
+    <xsl:value-of select="concat(@id, ':', value[@key='name'], '&#10;')" />
+  </xsl:template>
+</xsl:stylesheet>
+END_TABLES
+
+cat << 'END_INSERTS' > $INSERTS
+sub ascii ($) {
+    (my $str = shift) =~ s/([A-F0-9]{2})/chr(hex $1)/eg;
+    return $str;
+}
+
+$mapFile = shift;
+$insertsFile = shift;
+
+open(MAPFILE, $mapFile);
+
+my %tables = map { chomp; split /:/ } <MAPFILE>;
+my $ids = join '|', keys %tables;
+
+close(MAPFILE);
+
+open(INSERTSFILE, $insertsFile);
+
+while (<INSERTSFILE>) {
+    chomp;
+    $_ =~ s/"($ids)"/`$tables{$1}`/;
+    $_ =~ s/VALUES\(NULL,/VALUES (/;
+    $_ =~ s/X'([A-F0-9]+)'/"'" . ascii($1) . "'"/eg;
+    print "$_\n";
+}
+
+close(INSERTSFILE);
+END_INSERTS
+
+MAPFILE=$(tempfile)
+DATA=$(tempfile)
+INSERT_SQL=$(tempfile)
+
+unzip -p "$1" document.mwb.xml | xsltproc $SCHEMA -
+unzip -p "$1" document.mwb.xml | xsltproc $TABLES - > $MAPFILE
+
+unzip -p "$1" '@db/data.db' > $DATA
+sqlite3 $DATA '.dump' | grep '^INSERT' > $INSERT_SQL
+perl $INSERTS $MAPFILE $INSERT_SQL | grep -v '^INSERT INTO "'
+
+rm $SCHEMA $TABLES $INSERTS $MAPFILE $DATA $INSERT_SQL
