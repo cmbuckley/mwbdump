@@ -6,11 +6,9 @@ requireCommand(){
 
 requireCommand xsltproc
 requireCommand sqlite3
-requireCommand perl
 
 SCHEMA=$(tempfile)
 TABLES=$(tempfile)
-INSERTS=$(tempfile)
 
 cat << 'END_SCHEMA' > $SCHEMA
 <?xml version="1.0" encoding="UTF-8"?>
@@ -203,49 +201,26 @@ cat << 'END_TABLES' > $TABLES
   </xsl:template>
 
   <xsl:template match="value[@struct-name='db.mysql.Table']">
-    <xsl:value-of select="concat(@id, ':', value[@key='name'], '&#10;')" />
+    <xsl:value-of select="concat('s/&#34;', @id, '&#34;/`', value[@key='name'], '`/&#10;')" />
   </xsl:template>
 </xsl:stylesheet>
 END_TABLES
 
-cat << 'END_INSERTS' > $INSERTS
-sub ascii ($) {
-    (my $str = shift) =~ s/([A-F0-9]{2})/chr(hex $1)/eg;
-    return $str;
-}
-
-$mapFile = shift;
-$insertsFile = shift;
-
-open(MAPFILE, $mapFile);
-
-my %tables = map { chomp; split /:/ } <MAPFILE>;
-my $ids = join '|', keys %tables;
-
-close(MAPFILE);
-
-open(INSERTSFILE, $insertsFile);
-
-while (<INSERTSFILE>) {
-    chomp;
-    $_ =~ s/"($ids)"/`$tables{$1}`/;
-    $_ =~ s/VALUES\(NULL,/VALUES (/;
-    $_ =~ s/X'([A-F0-9]+)'/"'" . ascii($1) . "'"/eg;
-    print "$_\n";
-}
-
-close(INSERTSFILE);
-END_INSERTS
-
-MAPFILE=$(tempfile)
+SEDFILE=$(tempfile)
 DATA=$(tempfile)
 INSERT_SQL=$(tempfile)
 
 unzip -p "$1" document.mwb.xml | xsltproc $SCHEMA -
-unzip -p "$1" document.mwb.xml | xsltproc $TABLES - > $MAPFILE
+unzip -p "$1" document.mwb.xml | xsltproc $TABLES - > $SEDFILE
+
+# extra sed replacements on the inserts
+# @todo sed equivalent for perl: s/X'([A-F0-9]+)'/"'" . ascii($1) . "'"/eg
+cat << 'END_SEDFILE' >> $SEDFILE
+s/VALUES(NULL,/VALUES (/
+END_SEDFILE
 
 unzip -p "$1" '@db/data.db' > $DATA
 sqlite3 $DATA '.dump' | grep '^INSERT' > $INSERT_SQL
-perl $INSERTS $MAPFILE $INSERT_SQL | grep -v '^INSERT INTO "'
+sed -f $SEDFILE $INSERT_SQL | grep -v '^INSERT INTO "'
 
-rm $SCHEMA $TABLES $INSERTS $MAPFILE $DATA $INSERT_SQL
+rm $SCHEMA $TABLES $SEDFILE $DATA $INSERT_SQL
