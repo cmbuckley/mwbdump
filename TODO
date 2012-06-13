@@ -1,0 +1,4 @@
+2012-06-13:
+
+# Support [--no-data|-d], [--no-create-info|-t] and [--no-create-db|-n] like mysqldump
+# Catch error for missing data.db
