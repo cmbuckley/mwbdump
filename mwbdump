@@ -1,16 +1,95 @@
 #!/bin/sh
 
-requireCommand(){
-    command -v $1 >/dev/null 2>&1 || { echo >&2 "mwbdump requires $1"; exit 1; }
+# TRAP SIGNALS
+trap 'cleanup' QUIT EXIT
+
+readonly PRG=`basename $0`
+readonly VER=0.2
+readonly TEMPFORMAT="$PRG"
+
+help(){
+    echo "Usage: $PRG [OPTION]... input-file"
+    echo
+    echo "  -n, --no-create-db   Suppress schema creation."
+    echo "  -t, --no-create-info Suppress table creation."
+    echo "  -d, --no-data        Suppress table INSERT statements."
+    echo "  -V, --version        Output version information and exit."
+    echo "  -h, --help           Display this help message and exit."
 }
+
+version(){
+    echo "$PRG version $VER"
+}
+
+err(){
+    echo "$1" >&2
+    [ -n $2 ] && exit $2
+}
+
+cleanup(){
+    rm -f $FILE_XSL_SCHEMA $FILE_XSL_TABLES $FILE_SQL_REPLACEMENTS $FILE_SQL_DATA $FILE_SQL_INSERTS
+}
+
+requireCommand(){
+    command -v $1 >/dev/null 2>&1 || err "$PRG requires $1" 69 # EX_UNAVAILABLE
+}
+
+OPT_CREATE_SCHEMA=1
+OPT_CREATE_TABLES=1
+OPT_CREATE_DATA=1
+
+while test $# -gt 0; do
+    case $1 in
+        --no-create-db | -n )
+            OPT_CREATE_SCHEMA=0
+            shift
+            ;;
+
+        --no-create-info | -t )
+            OPT_CREATE_TABLES=0
+            shift
+            ;;
+
+        --no-data | -d )
+            OPT_CREATE_DATA=0
+            shift
+            ;;
+
+        --version | -V )
+            version
+            exit
+            ;;
+
+        --help | -h )
+            help
+            exit
+            ;;
+
+        -* )
+            err "$1: invalid option"
+            help
+            exit 64 # EX_USAGE
+            ;;
+
+        * )
+            if [ -e "$1" ]; then
+                MWBFILE="$1"
+                break
+            fi
+            err "File not found: $1"
+            help
+            exit 64 # EX_USAGE
+            ;;
+    esac
+done
 
 requireCommand xsltproc
 requireCommand sqlite3
 
-SCHEMA=$(tempfile)
-TABLES=$(tempfile)
+FILE_XSL_SCHEMA=$(mktemp -t $TEMPFORMAT)
+FILE_XSL_TABLES=$(mktemp -t $TEMPFORMAT)
 
-cat << 'END_SCHEMA' > $SCHEMA
+cat << 'END_SCHEMA' > $FILE_XSL_SCHEMA
 <?xml version="1.0" encoding="UTF-8"?>
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
   <xsl:output method="text" media-type="application/x-sql" encoding="UTF-8" />
@@ -28,10 +107,15 @@ cat << 'END_SCHEMA' > $SCHEMA
   <xsl:template match="value[@struct-name='db.mysql.Schema']">
     <xsl:text>CREATE SCHEMA IF NOT EXISTS `</xsl:text>
     <xsl:value-of select="value[@key='name']" />
-    <xsl:text>` DEFAULT CHARACTER SET </xsl:text>
-    <xsl:value-of select="value[@key='defaultCharacterSetName']" />
-    <xsl:text> COLLATE </xsl:text>
-    <xsl:value-of select="value[@key='defaultCollationName']" />
+    <xsl:text>`</xsl:text>
+    <xsl:if test="value[@key='defaultCharacterSetName'] != ''">
+        <xsl:text> DEFAULT CHARACTER SET </xsl:text>
+        <xsl:value-of select="value[@key='defaultCharacterSetName']" />
+        <xsl:if test="value[@key='defaultCollationName'] != ''">
+            <xsl:text> COLLATE </xsl:text>
+            <xsl:value-of select="value[@key='defaultCollationName']" />
+        </xsl:if>
+    </xsl:if>
     <xsl:text>;&#10;&#10;</xsl:text>
     <xsl:apply-templates select="value/value[@struct-name='db.mysql.Table']" />
   </xsl:template>
@@ -186,7 +270,7 @@ cat << 'END_SCHEMA' > $SCHEMA
 </xsl:stylesheet>
 END_SCHEMA
 
-cat << 'END_TABLES' > $TABLES
+cat << 'END_TABLES' > $FILE_XSL_TABLES
 <?xml version="1.0" encoding="UTF-8"?>
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
   <xsl:output method="text" media-type="application/x-sql" encoding="UTF-8" />
@@ -206,21 +290,22 @@ cat << 'END_TABLES' > $TABLES
 </xsl:stylesheet>
 END_TABLES
 
-SEDFILE=$(tempfile)
-DATA=$(tempfile)
-INSERT_SQL=$(tempfile)
+unzip -t "$MWBFILE" >/dev/null 2>&1
+[ $? -ne 0 ] && err "Invalid workbench file: $MWBFILE" 64 # EX_USAGE
 
-unzip -p "$1" document.mwb.xml | xsltproc $SCHEMA -
-unzip -p "$1" document.mwb.xml | xsltproc $TABLES - > $SEDFILE
+FILE_SQL_DATA=$(mktemp -t $TEMPFORMAT)
+FILE_SQL_INSERTS=$(mktemp -t $TEMPFORMAT)
+FILE_SQL_REPLACEMENTS=$(mktemp -t $TEMPFORMAT)
+
+unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_SCHEMA -
+unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_TABLES - > $FILE_SQL_REPLACEMENTS
 
 # extra sed replacements on the inserts
 # @todo sed equivalent for perl: s/X'([A-F0-9]+)'/"'" . ascii($1) . "'"/eg
-cat << 'END_SEDFILE' >> $SEDFILE
+cat << 'END_SQL_REPLACEMENTS' >> $FILE_SQL_REPLACEMENTS
 s/VALUES(NULL,/VALUES (/
-END_SEDFILE
+END_SQL_REPLACEMENTS
 
-unzip -p "$1" '@db/data.db' > $DATA
-sqlite3 $DATA '.dump' | grep '^INSERT' > $INSERT_SQL
-sed -f $SEDFILE $INSERT_SQL | grep -v '^INSERT INTO "'
-
-rm $SCHEMA $TABLES $SEDFILE $DATA $INSERT_SQL
+unzip -p "$1" '@db/data.db' > $FILE_SQL_DATA
+sqlite3 $FILE_SQL_DATA '.dump' | grep '^INSERT' > $FILE_SQL_INSERTS
+sed -f $FILE_SQL_REPLACEMENTS $FILE_SQL_INSERTS | grep -v '^INSERT INTO "'
