@@ -28,7 +28,7 @@ err(){
 }
 
 cleanup(){
-    rm -f $FILE_XSL_SCHEMA $FILE_XSL_TABLES $FILE_SQL_REPLACEMENTS $FILE_SQL_DATA $FILE_SQL_INSERTS
+    rm -f $FILE_XSL_SCHEMA $FILE_XSL_TABLES $FILE_SQL_DATA
 }
 
 requireCommand(){
@@ -270,14 +270,11 @@ cat << 'END_SCHEMA' > $FILE_XSL_SCHEMA
 </xsl:stylesheet>
 END_SCHEMA
 
+# XSLT to get a list of table IDs -> names (as sed replacements)
 cat << 'END_TABLES' > $FILE_XSL_TABLES
 <?xml version="1.0" encoding="UTF-8"?>
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
   <xsl:output method="text" media-type="application/x-sql" encoding="UTF-8" />
-
-  <!-- keys -->
-  <xsl:key name="tables" match="//value[@struct-name='db.mysql.Table']/value[@key='name']" use="../@id" />
-  <xsl:key name="columns" match="//value[@struct-name='db.mysql.Column']/value[@key='name']" use="../@id" />
 
   <!-- root -->
   <xsl:template match="/">
@@ -293,19 +290,15 @@ END_TABLES
 unzip -t "$MWBFILE" >/dev/null 2>&1
 [ $? -ne 0 ] && err "$MWBFILE: Invalid workbench file" 64 # EX_USAGE
 
-FILE_SQL_DATA=$(mktemp -t $TEMPFORMAT)
-FILE_SQL_INSERTS=$(mktemp -t $TEMPFORMAT)
-FILE_SQL_REPLACEMENTS=$(mktemp -t $TEMPFORMAT)
-
 unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_SCHEMA -
-unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_TABLES - > $FILE_SQL_REPLACEMENTS
 
-# extra sed replacements on the inserts
-# @todo sed equivalent for perl: s/X'([A-F0-9]+)'/"'" . ascii($1) . "'"/eg
-cat << 'END_SQL_REPLACEMENTS' >> $FILE_SQL_REPLACEMENTS
-s/VALUES(NULL,/VALUES (/
-END_SQL_REPLACEMENTS
+# SQL INSERT replacements
+if [ "$OPT_CREATE_DATA" -eq "1" ]; then
+    echo "-- Dumping table data"
+    SQL_REPLACEMENTS=$(unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_TABLES -)
+    SQL_REPLACEMENTS_CUSTOM='s/VALUES(NULL,/VALUES (/'
+    FILE_SQL_DATA=$(mktemp -t $TEMPFORMAT)
 
-unzip -p "$1" '@db/data.db' > $FILE_SQL_DATA
-sqlite3 $FILE_SQL_DATA '.dump' | grep '^INSERT' > $FILE_SQL_INSERTS
-sed -f $FILE_SQL_REPLACEMENTS $FILE_SQL_INSERTS | grep -v '^INSERT INTO "'
+    unzip -p "$1" '@db/data.db' > $FILE_SQL_DATA
+    sqlite3 $FILE_SQL_DATA '.dump' | grep '^INSERT' | sed -e "$SQL_REPLACEMENTS" -e "$SQL_REPLACEMENTS_CUSTOM" | grep -v '^INSERT INTO "'
+fi
