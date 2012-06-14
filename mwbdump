@@ -8,7 +8,7 @@ readonly VER=0.2
 readonly TEMPFORMAT="$PRG.XXXX"
 
 help(){
-    echo "Usage: $PRG [OPTION]... input-file"
+    echo "Usage: $PRG [OPTION]... workbench-file"
     echo
     echo "  -n, --no-create-db   Suppress schema creation."
     echo "  -t, --no-create-info Suppress table creation."
@@ -22,8 +22,9 @@ version(){
 }
 
 err(){
-    echo "$1" >&2
-    [ -n $2 ] && exit $2
+    [ -n "$1" ] && echo "$PRG: $1" >&2
+    help >&2
+    [ -n "$2" ] && exit $2
 }
 
 cleanup(){
@@ -37,6 +38,7 @@ requireCommand(){
 OPT_CREATE_SCHEMA=1
 OPT_CREATE_TABLES=1
 OPT_CREATE_DATA=1
+MWBFILE=
 
 while test $# -gt 0; do
     case $1 in
@@ -66,9 +68,7 @@ while test $# -gt 0; do
             ;;
 
         -* )
-            err "$1: invalid option"
-            help
-            exit 64 # EX_USAGE
+            err "$1: invalid option" 64 # EX_USAGE
             ;;
 
         * )
@@ -76,12 +76,12 @@ while test $# -gt 0; do
                 MWBFILE="$1"
                 break
             fi
-            err "File not found: $1"
-            help
-            exit 64 # EX_USAGE
+            err "$1: No such file or directory" 64 # EX_USAGE
             ;;
     esac
 done
+
+[ -z "$MWBFILE" ] && err '' 64 # EX_USAGE
 
 requireCommand xsltproc
 requireCommand sqlite3
@@ -291,7 +291,7 @@ cat << 'END_TABLES' > $FILE_XSL_TABLES
 END_TABLES
 
 unzip -t "$MWBFILE" >/dev/null 2>&1
-[ $? -ne 0 ] && err "Invalid workbench file: $MWBFILE" 64 # EX_USAGE
+[ $? -ne 0 ] && err "$MWBFILE: Invalid workbench file" 64 # EX_USAGE
 
 FILE_SQL_DATA=$(mktemp -t $TEMPFORMAT)
 FILE_SQL_INSERTS=$(mktemp -t $TEMPFORMAT)
