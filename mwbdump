@@ -5,7 +5,7 @@ trap 'cleanup' QUIT EXIT
 
 readonly PRG=`basename $0`
 readonly VER=0.2
-readonly TEMPFORMAT="$PRG"
+readonly TEMPFORMAT="$PRG.XXXX"
 
 help(){
     echo "Usage: $PRG [OPTION]... input-file"
