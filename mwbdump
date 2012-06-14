@@ -91,15 +91,12 @@ requireCommand sqlite3
 
 FILE_XSL_SCHEMA=$(mktemp -t $TEMPFORMAT)
 FILE_XSL_TABLES=$(mktemp -t $TEMPFORMAT)
+FILE_XSL_REPLACEMENTS=$(mktemp -t $TEMPFORMAT)
 
 cat << 'END_SCHEMA' > $FILE_XSL_SCHEMA
 <?xml version="1.0" encoding="UTF-8"?>
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
   <xsl:output method="text" media-type="application/x-sql" encoding="UTF-8" />
-
-  <!-- keys -->
-  <xsl:key name="tables" match="//value[@struct-name='db.mysql.Table']/value[@key='name']" use="../@id" />
-  <xsl:key name="columns" match="//value[@struct-name='db.mysql.Column']/value[@key='name']" use="../@id" />
 
   <!-- root -->
   <xsl:template match="/">
@@ -120,7 +117,22 @@ cat << 'END_SCHEMA' > $FILE_XSL_SCHEMA
         </xsl:if>
     </xsl:if>
     <xsl:text>;&#10;&#10;</xsl:text>
-    <xsl:apply-templates select="value/value[@struct-name='db.mysql.Table']" />
+  </xsl:template>
+</xsl:stylesheet>
+END_SCHEMA
+
+cat << 'END_TABLES' > $FILE_XSL_TABLES
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  <xsl:output method="text" media-type="application/x-sql" encoding="UTF-8" />
+
+  <!-- keys -->
+  <xsl:key name="tables" match="//value[@struct-name='db.mysql.Table']/value[@key='name']" use="../@id" />
+  <xsl:key name="columns" match="//value[@struct-name='db.mysql.Column']/value[@key='name']" use="../@id" />
+
+  <!-- root -->
+  <xsl:template match="/">
+    <xsl:apply-templates select="//value[@struct-name='db.mysql.Schema']/value/value[@struct-name='db.mysql.Table']" />
   </xsl:template>
 
   <!-- tables -->
@@ -271,10 +283,10 @@ cat << 'END_SCHEMA' > $FILE_XSL_SCHEMA
     </xsl:choose>
   </xsl:template>
 </xsl:stylesheet>
-END_SCHEMA
+END_TABLES
 
 # XSLT to get a list of table IDs -> names (as sed replacements)
-cat << 'END_TABLES' > $FILE_XSL_TABLES
+cat << 'END_REPLACEMENTS' > $FILE_XSL_REPLACEMENTS
 <?xml version="1.0" encoding="UTF-8"?>
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
   <xsl:output method="text" media-type="application/x-sql" encoding="UTF-8" />
@@ -288,17 +300,22 @@ cat << 'END_TABLES' > $FILE_XSL_TABLES
     <xsl:value-of select="concat('s/&#34;', @id, '&#34;/`', value[@key='name'], '`/&#10;')" />
   </xsl:template>
 </xsl:stylesheet>
-END_TABLES
+END_REPLACEMENTS
 
 unzip -t "$MWBFILE" >/dev/null 2>&1
 [ $? -ne 0 ] && err "$MWBFILE: Invalid workbench file" 64 # EX_USAGE
 
-unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_SCHEMA -
+if [ "$OPT_CREATE_SCHEMA" -eq "1" ]; then
+    unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_SCHEMA -
+fi
+
+if [ "$OPT_CREATE_TABLES" -eq "1" ]; then
+    unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_TABLES -
+fi
 
 # SQL INSERT replacements
 if [ "$OPT_CREATE_DATA" -eq "1" ]; then
-    echo "-- Dumping table data"
-    SQL_REPLACEMENTS=$(unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_TABLES -)
+    SQL_REPLACEMENTS=$(unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_REPLACEMENTS -)
     SQL_REPLACEMENTS_CUSTOM='s/VALUES(NULL,/VALUES (/'
     FILE_SQL_DATA=$(mktemp -t $TEMPFORMAT)
 
