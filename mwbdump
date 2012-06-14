@@ -72,11 +72,14 @@ while test $# -gt 0; do
             ;;
 
         * )
+            [ -n "$MWBFILE" ] && err '' 64 # EX_USAGE
+
             if [ -e "$1" ]; then
                 MWBFILE="$1"
-                break
+                shift
+            else
+                err "$1: No such file or directory" 64 # EX_USAGE
             fi
-            err "$1: No such file or directory" 64 # EX_USAGE
             ;;
     esac
 done
