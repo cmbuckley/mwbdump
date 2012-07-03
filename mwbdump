@@ -4,7 +4,7 @@
 trap 'cleanup' QUIT EXIT
 
 readonly PRG=`basename $0`
-readonly VER=0.2
+readonly VER="0.2.0"
 readonly TEMPFORMAT="$PRG.XXXX"
 
 help(){
