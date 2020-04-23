@@ -165,32 +165,44 @@ cat << 'END_TABLES' > $FILE_XSL_TABLES
     <xsl:if test="value[@key='autoIncrement'] = '1'"> AUTO_INCREMENT</xsl:if>
   </xsl:template>
 
+  <!-- simple string replace -->
+  <xsl:template name="string-replace">
+    <xsl:param name="text" />
+    <xsl:param name="replace" />
+    <xsl:param name="by" />
+    <xsl:choose>
+      <xsl:when test="$text = '' or $replace = '' or not($replace)">
+        <xsl:value-of select="$text" />
+      </xsl:when>
+      <xsl:when test="contains($text, $replace)">
+        <xsl:value-of select="substring-before($text, $replace)" />
+        <xsl:value-of select="$by" />
+        <xsl:value-of select="substring-after($text, $replace)" />
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:value-of select="$text" />
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:template>
+
   <!-- column type -->
   <xsl:template match="link[@key='simpleType']">
+    <xsl:variable name="type">
+      <xsl:call-template name="string-replace">
+        <xsl:with-param name="text" select="." />
+        <xsl:with-param name="replace" select="'com.mysql.rdbms.mysql.datatype.'" />
+        <xsl:with-param name="by" select="''" />
+      </xsl:call-template>
+    </xsl:variable>
     <xsl:choose>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.int'">INT</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.varchar'">VARCHAR</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.char'">CHAR</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.decimal'">DECIMAL</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.datetime'">DATETIME</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.blob'">BLOB</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.longblob'">LONGBLOB</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.mediumblob'">MEDIUMBLOB</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.tinyblob'">TINYBLOB</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.date'">DATE</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.time'">TIME</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.timestamp'">TIMESTAMP</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.year'">YEAR</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.smallint'">SMALLINT</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.tinyint'">TINYINT</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.bigint'">BIGINT</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.mediumint'">MEDIUMINT</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.text'">TEXT</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.bit'">BIT</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.mediumtext'">MEDIUMTEXT</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.enum'">ENUM</xsl:when>
-      <xsl:when test=". = 'com.mysql.rdbms.mysql.datatype.float'">FLOAT</xsl:when>
-      <!--<xsl:otherwise>UNKNOWN</xsl:otherwise>-->
+      <xsl:when test="$type = 'nchar'">CHAR</xsl:when>
+      <xsl:when test="$type = 'nvarchar'">VARCHAR</xsl:when>
+      <xsl:when test="$type = 'ime_f'">TIME</xsl:when>
+      <xsl:when test="$type = 'datetime_f'">DATETIME</xsl:when>
+      <xsl:when test="$type = 'timestamp_f'">TIMESTAMP</xsl:when>
+      <xsl:otherwise>
+        <xsl:value-of select="translate($type, 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')" />
+      </xsl:otherwise>
     </xsl:choose>
   </xsl:template>
 
