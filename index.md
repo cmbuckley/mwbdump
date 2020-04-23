@@ -13,20 +13,20 @@ mwbdump [OPTION]... workbench-file
 
 ### Options
 
--n / --no-create-db
+`-n`, `--no-create-db`
 : Suppress the CREATE DATABASE IF NOT EXISTS ... statements.
 
--t / --no-create-info
+`-t`, `--no-create-info`
 : Suppress the CREATE TABLE IF NOT EXISTS ... statements.
 
--d / --no-data
+`-d`, `--no-data`
 : Don't write row INSERT statements.
 
---skip-add-drop-table
+`--skip-add-drop-table`
 : Suppress the DROP TABLE IF EXISTS ... statements.
 
--V / --version
+`-V`, `--version`
 : Output version information and exit.
 
--h / --help
+`-h`, `--help`
 : Display help message and exit.
