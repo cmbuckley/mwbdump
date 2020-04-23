@@ -163,6 +163,10 @@ cat << 'END_TABLES' > $FILE_XSL_TABLES
     <xsl:apply-templates select="value/value[@struct-name='db.mysql.ForeignKey']" />
     <xsl:text>&#10;) ENGINE=</xsl:text>
     <xsl:value-of select="value[@key='tableEngine']" />
+    <xsl:if test="value[@key='nextAutoInc'] != ''">
+      <xsl:text> AUTO_INCREMENT=</xsl:text>
+      <xsl:value-of select="value[@key='nextAutoInc']" />
+    </xsl:if>
     <xsl:if test="value[@key='defaultCharacterSetName'] != ''">
       <xsl:text> DEFAULT CHARSET=</xsl:text>
       <xsl:value-of select="value[@key='defaultCharacterSetName']" />
