@@ -364,6 +364,6 @@ if [ "$OPT_CREATE_DATA" -eq "1" ]; then
     SQL_REPLACEMENTS_CUSTOM='s/VALUES(NULL,/VALUES (/'
     FILE_SQL_DATA=$(mktemp -t $TEMPFORMAT)
 
-    unzip -p "$1" '@db/data.db' > $FILE_SQL_DATA
+    unzip -p "$MWBFILE" '@db/data.db' > $FILE_SQL_DATA
     sqlite3 $FILE_SQL_DATA '.dump' | grep '^INSERT' | sed -e "$SQL_REPLACEMENTS" -e "$SQL_REPLACEMENTS_CUSTOM" | grep -v '^INSERT INTO "'
 fi
