@@ -10,11 +10,12 @@ readonly TEMPFORMAT="$PRG.XXXX"
 help(){
     echo "Usage: $PRG [OPTION]... workbench-file"
     echo
-    echo "  -n, --no-create-db   Suppress schema creation."
-    echo "  -t, --no-create-info Suppress table creation."
-    echo "  -d, --no-data        Suppress table INSERT statements."
-    echo "  -V, --version        Output version information and exit."
-    echo "  -h, --help           Display this help message and exit."
+    echo "  -n, --no-create-db        Suppress schema creation."
+    echo "  -t, --no-create-info      Suppress table creation."
+    echo "  -d, --no-data             Suppress table INSERT statements."
+    echo "      --skip-add-drop-table Suppress ADD DROP TABLE statements."
+    echo "  -V, --version             Output version information and exit."
+    echo "  -h, --help                Display this help message and exit."
 }
 
 version(){
@@ -38,6 +39,7 @@ requireCommand(){
 OPT_CREATE_DB=1
 OPT_CREATE_TABLES=1
 OPT_CREATE_DATA=1
+OPT_DROP_TABLE=1
 MWBFILE=
 
 while test $# -gt 0; do
@@ -54,6 +56,11 @@ while test $# -gt 0; do
 
         --no-data | -d )
             OPT_CREATE_DATA=0
+            shift
+            ;;
+
+        --skip-add-drop-table )
+            OPT_DROP_TABLE=0
             shift
             ;;
 
@@ -137,6 +144,13 @@ cat << 'END_TABLES' > $FILE_XSL_TABLES
 
   <!-- tables -->
   <xsl:template match="value[@struct-name='db.mysql.Table']">
+    <xsl:if test="$addDropTable = '1'">
+      <xsl:text>DROP TABLE IF EXISTS `</xsl:text>
+      <xsl:value-of select="../../value[@key='name']" />
+      <xsl:text>`.`</xsl:text>
+      <xsl:value-of select="value[@key='name']" />
+      <xsl:text>`; &#10;&#10;</xsl:text>
+    </xsl:if>
     <xsl:text>CREATE TABLE IF NOT EXISTS `</xsl:text>
     <xsl:value-of select="../../value[@key='name']" />
     <xsl:text>`.`</xsl:text>
@@ -322,7 +336,7 @@ if [ "$OPT_CREATE_DB" -eq "1" ]; then
 fi
 
 if [ "$OPT_CREATE_TABLES" -eq "1" ]; then
-    unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_TABLES -
+    unzip -p "$MWBFILE" document.mwb.xml | xsltproc --stringparam addDropTable "$OPT_DROP_TABLE" $FILE_XSL_TABLES -
 fi
 
 # SQL INSERT replacements
