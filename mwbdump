@@ -338,11 +338,12 @@ cat << 'END_REPLACEMENTS' > $FILE_XSL_REPLACEMENTS
 
   <!-- root -->
   <xsl:template match="/">
+    <xsl:text>s/VALUES(NULL,/VALUES (/;</xsl:text>
     <xsl:apply-templates select="//value[@struct-name='db.mysql.Table']" />
   </xsl:template>
 
   <xsl:template match="value[@struct-name='db.mysql.Table']">
-    <xsl:value-of select="concat('s/&#34;', @id, '&#34;/`', value[@key='name'], '`/&#10;')" />
+    <xsl:value-of select="concat('s/&#34;', @id, '&#34;/`', value[@key='name'], '`/;')" />
   </xsl:template>
 </xsl:stylesheet>
 END_REPLACEMENTS
@@ -361,9 +362,8 @@ fi
 # SQL INSERT replacements
 if [ "$OPT_CREATE_DATA" -eq "1" ]; then
     SQL_REPLACEMENTS=$(unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_REPLACEMENTS -)
-    SQL_REPLACEMENTS_CUSTOM='s/VALUES(NULL,/VALUES (/'
     FILE_SQL_DATA=$(mktemp -t $TEMPFORMAT)
 
     unzip -p "$MWBFILE" '@db/data.db' > $FILE_SQL_DATA
-    sqlite3 $FILE_SQL_DATA '.dump' | grep '^INSERT' | sed -e "$SQL_REPLACEMENTS" -e "$SQL_REPLACEMENTS_CUSTOM" | grep -v '^INSERT INTO "'
+    sqlite3 $FILE_SQL_DATA '.dump' | grep '^INSERT INTO "' | sed -e "$SQL_REPLACEMENTS"
 fi
