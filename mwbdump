@@ -161,8 +161,16 @@ cat << 'END_TABLES' > $FILE_XSL_TABLES
     <xsl:apply-templates select="value/value[@struct-name='db.mysql.Index'][value[@key='indexType'][.='PRIMARY']]" />
     <xsl:apply-templates select="value/value[@struct-name='db.mysql.Index'][value[@key='indexType'][. != 'PRIMARY']]" />
     <xsl:apply-templates select="value/value[@struct-name='db.mysql.ForeignKey']" />
-    <xsl:text>&#10;) ENGINE = </xsl:text>
+    <xsl:text>&#10;) ENGINE=</xsl:text>
     <xsl:value-of select="value[@key='tableEngine']" />
+    <xsl:if test="value[@key='defaultCharacterSetName'] != ''">
+      <xsl:text> DEFAULT CHARSET=</xsl:text>
+      <xsl:value-of select="value[@key='defaultCharacterSetName']" />
+      <xsl:if test="value[@key='defaultCollationName'] != ''">
+        <xsl:text> COLLATE=</xsl:text>
+        <xsl:value-of select="value[@key='defaultCollationName']" />
+      </xsl:if>
+    </xsl:if>
     <xsl:text>;&#10;&#10;</xsl:text>
   </xsl:template>
 
@@ -235,6 +243,12 @@ cat << 'END_TABLES' > $FILE_XSL_TABLES
     </xsl:if>
     <xsl:if test="value[@key='datatypeExplicitParams'] != ''">
       <xsl:value-of select="value[@key='datatypeExplicitParams']" />
+    </xsl:if>
+    <xsl:if test="value[@key='characterSetName'] != ''">
+      <xsl:value-of select="concat(' CHARACTER SET ', value[@key='characterSetName'])" />
+    </xsl:if>
+    <xsl:if test="value[@key='collationName'] != ''">
+      <xsl:value-of select="concat(' COLLATE ', value[@key='collationName'])" />
     </xsl:if>
   </xsl:template>
 
