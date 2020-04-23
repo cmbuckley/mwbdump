@@ -35,7 +35,7 @@ requireCommand(){
     command -v $1 >/dev/null 2>&1 || err "$PRG requires $1" 69 # EX_UNAVAILABLE
 }
 
-OPT_CREATE_SCHEMA=1
+OPT_CREATE_DB=1
 OPT_CREATE_TABLES=1
 OPT_CREATE_DATA=1
 MWBFILE=
@@ -43,7 +43,7 @@ MWBFILE=
 while test $# -gt 0; do
     case $1 in
         --no-create-db | -n )
-            OPT_CREATE_SCHEMA=0
+            OPT_CREATE_DB=0
             shift
             ;;
 
@@ -105,7 +105,7 @@ cat << 'END_SCHEMA' > $FILE_XSL_SCHEMA
 
   <!-- schemata -->
   <xsl:template match="value[@struct-name='db.mysql.Schema']">
-    <xsl:text>CREATE SCHEMA IF NOT EXISTS `</xsl:text>
+    <xsl:text>CREATE DATABASE /*!32312 IF NOT EXISTS*/ `</xsl:text>
     <xsl:value-of select="value[@key='name']" />
     <xsl:text>`</xsl:text>
     <xsl:if test="value[@key='defaultCharacterSetName'] != ''">
@@ -317,7 +317,7 @@ END_REPLACEMENTS
 unzip -t "$MWBFILE" >/dev/null 2>&1
 [ $? -ne 0 ] && err "$MWBFILE: Invalid workbench file" 64 # EX_USAGE
 
-if [ "$OPT_CREATE_SCHEMA" -eq "1" ]; then
+if [ "$OPT_CREATE_DB" -eq "1" ]; then
     unzip -p "$MWBFILE" document.mwb.xml | xsltproc $FILE_XSL_SCHEMA -
 fi
 
