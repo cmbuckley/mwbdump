@@ -1,6 +1,10 @@
 ---
 layout: showcase
 title: mwbdump
+image:
+  meta:
+    src: /workbench.png
+    alt: MySQL Workbench icon
 ---
 
 A script for dumping [MySQL Workbench](https://www.mysql.com/products/workbench/) files to SQL, very similar to the format for mysqldump.
