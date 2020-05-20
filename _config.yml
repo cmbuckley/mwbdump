@@ -4,7 +4,12 @@ description: Dump a MySQL Workbench file using only XSLT and SQLite
 url: https://cmbuckley.co.uk
 baseurl: /mwbdump
 
+repository: cmbuckley/mwbdump
 remote_theme: "cmbuckley/cmbuckley.github.io"
+
+plugins:
+  - jekyll-github-metadata
+  - jekyll-remote-theme
 
 markdown: kramdown
 highlighter: rouge
@@ -31,4 +36,3 @@ social:
    facebook:  cmbuckley
    instagram: c.m.buckley
    amazon:    https://bux.re/amzn
-   google:    https://bux.re/+
